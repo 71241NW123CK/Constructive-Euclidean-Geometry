@@ -1,0 +1,3 @@
+[submodule "Obj-C-Generics"]
+	path = Obj-C-Generics
+	url = git@github.com:misomedia/Obj-C-Generics.git
