@@ -9,28 +9,14 @@
 #import "CEGObject.h"
 #import "Generics.h"
 
-@interface EGPoint()
-
-@property	(nonatomic, readwrite, strong)	NSArray*	components;
-
-@end
-
-@implementation	EGPoint
-
--(int)dimension{return [self.components count];}
-
--(NSNumber*)componentAtIndex:(int)index{return index < [self.components count]	? [self.components objectAtIndex:index] : nil;}
-
-@end
-
 //!	A class for representing an object constructed in Constructive Euclidean Geometry (my name for generalized Constructive Solid Geometry) in an arbitrary number of dimensions (infinite dimensions, most of which are flattened or not used).
 @implementation CEGObject
 
--(bool)exteriorContainsPoint:(EGPoint*)point{return true;}
+-(bool)exteriorContainsPoint:(id<EGPoint>)point{return true;}
 
--(bool)borderContainsPoint:(EGPoint*)point{return !([self interiorContainsPoint:point] || [self exteriorContainsPoint:point]);}
+-(bool)borderContainsPoint:(id<EGPoint>)point{return !([self interiorContainsPoint:point] || [self exteriorContainsPoint:point]);}
 
--(bool)interiorContainsPoint:(EGPoint*)point{return false;}
+-(bool)interiorContainsPoint:(id<EGPoint>)point{return false;}
 
 @end
 
@@ -50,7 +36,7 @@
 	return self;
 }
 
--(bool)exteriorContainsPoint:(EGPoint*)point
+-(bool)exteriorContainsPoint:(id<EGPoint>)point
 {
 	return
 	[(NSNumber*)foldl
@@ -63,7 +49,7 @@
 	];
 }
 
--(bool)interiorContainsPoint:(EGPoint*)point
+-(bool)interiorContainsPoint:(id<EGPoint>)point
 {
 	return
 	[(NSNumber*)foldl
@@ -94,7 +80,7 @@
 	return self;
 }
 
--(bool)exteriorContainsPoint:(EGPoint*)point
+-(bool)exteriorContainsPoint:(id<EGPoint>)point
 {
 	return
 	[(NSNumber*)foldl
@@ -110,7 +96,7 @@
 	];
 }
 
--(bool)interiorContainsPoint:(EGPoint*)point
+-(bool)interiorContainsPoint:(id<EGPoint>)point
 {
 	return
 	[(NSNumber*)foldl
@@ -150,8 +136,8 @@
 	return self;
 }
 
--(bool)exteriorContainsPoint:(EGPoint*)point{return [self.positiveObject exteriorContainsPoint:point] && [self.negativeObject interiorContainsPoint:point];}
+-(bool)exteriorContainsPoint:(id<EGPoint>)point{return [self.positiveObject exteriorContainsPoint:point] && [self.negativeObject interiorContainsPoint:point];}
 
--(bool)interiorContainsPoint:(EGPoint*)point{return [self.positiveObject interiorContainsPoint:point] && [self.negativeObject exteriorContainsPoint:point];}
+-(bool)interiorContainsPoint:(id<EGPoint>)point{return [self.positiveObject interiorContainsPoint:point] && [self.negativeObject exteriorContainsPoint:point];}
 
 @end

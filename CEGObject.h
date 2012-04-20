@@ -8,10 +8,8 @@
 
 #import <Foundation/Foundation.h>
 
-//!	A class for representing a point in an arbitrary number of dimensions.
-@interface EGPoint : NSObject
-
-@property	(nonatomic, readonly, strong)	NSArray*	components;
+//!	A protocol for representing a point in an arbitrary number of dimensions.
+@protocol EGPoint <NSObject>
 
 -(int)dimension;
 -(NSNumber*)componentAtIndex:(int)index;	//!<	returns nil for an index for a dimension greater than the dimension of the point (rendering its value undefined.  Think of the line x = 1 in the x-y plane.  Y is anything, and so all the other components are thus undefined.
@@ -21,9 +19,9 @@
 //!	A class for representing an object constructed in Constructive Euclidean Geometry (my name for generalized Constructive Solid Geometry) in an arbitrary number of dimensions (infinite dimensions, most of which are flattened or not used).
 @interface CEGObject : NSObject
 
--(bool)exteriorContainsPoint:(EGPoint*)point;
--(bool)borderContainsPoint:(EGPoint*)point;
--(bool)interiorContainsPoint:(EGPoint*)point;
+-(bool)exteriorContainsPoint:(id<EGPoint>)point;
+-(bool)borderContainsPoint:(id<EGPoint>)point;
+-(bool)interiorContainsPoint:(id<EGPoint>)point;
 
 @end
 
