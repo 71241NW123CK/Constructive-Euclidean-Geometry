@@ -101,6 +101,10 @@
 
 @interface PolygonTetrisCEGTriangle : CEGObject <PolygonTetrisCEGObject>
 
+@property	(nonatomic, readonly)	CGPoint vertex0;
+@property	(nonatomic, readonly)	CGPoint vertex1;
+@property	(nonatomic, readonly)	CGPoint vertex2;
+
 -(id)initWithVertex0:(CGPoint)vertex0 vertex1:(CGPoint)vertex1 vertex2:(CGPoint)vertex2;
 
 @end

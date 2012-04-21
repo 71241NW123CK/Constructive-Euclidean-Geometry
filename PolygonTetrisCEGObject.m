@@ -754,8 +754,13 @@
 	NSEnumerator* f1Enumerator = [piecewiseLinearPFE1.disjointLineSegmentPFEsWithDomainsInAscendingOrder objectEnumerator];
 	LineSegmentPartialFloatEndomorphism* f0 = [f0Enumerator nextObject];
 	LineSegmentPartialFloatEndomorphism* f1 = [f1Enumerator nextObject];
+	if(!f0 || !f1)
+	{
+		NSLog(@"got empty input!");
+		return [PiecewiseLinearPartialFloatEndomorphism piecewiseLinearPFEWithLineSegmentPFEs:[NSArray array] maximizing:false];
+	}
 	float startX = MIN(f0.domainMinimum, f1.domainMinimum);
-	while(f0 && f1)
+	while(f0 != nil && f1 != nil)
 	{
 		//do the domains overlap at all?
 		if(f0.domainMaximum <= f1.domainMinimum)		f0 = [f0Enumerator nextObject];
@@ -1181,6 +1186,7 @@ float planarCrossProd(CGPoint v0, CGPoint v1){return v0.x * v1.y - v1.x * v0.y;}
 		self.floorHeight = floorHeight;
 		float minHeight = [polygonTetrisCEGObject.piecewiseLinearPartialFloatMinMaxEndomorphismPair.minPFE minimumValue];
 		[polygonTetrisCEGObject moveUpByFloat:self.floorHeight - minHeight];
+		self.polygonTetrisCEGObject = polygonTetrisCEGObject;
 	}
 	return self;
 }
@@ -1188,9 +1194,16 @@ float planarCrossProd(CGPoint v0, CGPoint v1){return v0.x * v1.y - v1.x * v0.y;}
 -(void)addPolygonTetrisCEGObject:(id<PolygonTetrisCEGObject>)polygonTetrisCEGObject//drop an object into the system, unioning the result with self.polygonTetrisCEGObject and setting the union as the value of self.polygonTetrisCEGObject.
 {
 	float minHeight = [polygonTetrisCEGObject.piecewiseLinearPartialFloatMinMaxEndomorphismPair.minPFE minimumValue];
-	PiecewiseLinearPartialFloatEndomorphism* diff = [PiecewiseLinearPartialFloatEndomorphism differenceOnIntersectionPiecewiseLinearPFEWithPiecewiseLinearPFE0:self.polygonTetrisCEGObject.piecewiseLinearPartialFloatMinMaxEndomorphismPair.maxPFE piecewiseLinearPFE1:polygonTetrisCEGObject.piecewiseLinearPartialFloatMinMaxEndomorphismPair.minPFE];
+	PiecewiseLinearPartialFloatEndomorphism* diff =
+	[PiecewiseLinearPartialFloatEndomorphism
+		differenceOnIntersectionPiecewiseLinearPFEWithPiecewiseLinearPFE0:
+			self.polygonTetrisCEGObject.piecewiseLinearPartialFloatMinMaxEndomorphismPair.maxPFE
+		piecewiseLinearPFE1:
+			polygonTetrisCEGObject.piecewiseLinearPartialFloatMinMaxEndomorphismPair.minPFE
+	];
 	float minDistance = [diff minimumValue];
-	[polygonTetrisCEGObject moveUpByFloat:MAX(self.floorHeight - minHeight, minDistance)];
+	NSLog(@"minDistance: %f", minDistance);
+	[polygonTetrisCEGObject moveUpByFloat:MAX(self.floorHeight - minHeight, -minDistance)];
 	self.polygonTetrisCEGObject = [PolygonTetrisCEGUnion polygonTetrisCEGUnionWithObjects:[NSArray arrayWithObjects:self.polygonTetrisCEGObject, polygonTetrisCEGObject, nil]];
 }
 
