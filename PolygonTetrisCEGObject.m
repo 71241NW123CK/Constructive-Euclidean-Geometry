@@ -839,9 +839,18 @@
 			@selector(compare:)
 	];
 	//sew together coincident segments... later... and with a more precise comparison of slope...
+	NSArray* nontrivialDisjointLineSegmentPFEsWithDomainsInAscendingOrder =
+	filter
+	(
+		^_Bool(id x)
+		{
+			return ((LineSegmentPartialFloatEndomorphism*)x).domainMinimum != ((LineSegmentPartialFloatEndomorphism*)x).domainMaximum;
+		},
+		disjointLineSegmentPFEsWithDomainsInAscendingOrder
+	);
 	if(self = [super init])
 	{
-		self.disjointLineSegmentPFEsWithDomainsInAscendingOrder = disjointLineSegmentPFEsWithDomainsInAscendingOrder;
+		self.disjointLineSegmentPFEsWithDomainsInAscendingOrder = nontrivialDisjointLineSegmentPFEsWithDomainsInAscendingOrder;
 		self.maximizing = maximizing;
 	}
 	return self;
