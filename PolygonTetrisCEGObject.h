@@ -55,20 +55,47 @@
 
 @interface PiecewiseLinearPartialFloatEndomorphism : NSObject <PartialFloatEndomorphism>
 
-@property	(nonatomic, readonly, strong)	NSArray* disjointLineSegmentsInAscendingOrder;	//!<	An array of LineSegmentPartialFloatEndomorphism instances with non-overlapping domains (except for singletons).
+@property	(nonatomic, readonly, strong)	NSArray* disjointLineSegmentPFEsWithDomainsInAscendingOrder;	//!<	An array of LineSegmentPartialFloatEndomorphism instances with non-overlapping domains (except for singletons).
 @property	(nonatomic, readonly)	bool	maximizing;	//!<	when two line-segments-as-a-function instances share a single point in their domain, do we use the larger of the two (possibly different) values?
 
-+(PiecewiseLinearPartialFloatEndomorphism*)piecewiseLinearPFEWithLineSegmentsPartialFloatEndomorphisms:(NSArray*)lineSegmentPartialFloatEndomorphisms maximizing:(bool)maximizing;	//!<	sort them by domain.
++(PiecewiseLinearPartialFloatEndomorphism*)piecewiseLinearPFEWithLineSegmentPFEs:(NSArray*)lineSegmentPFEs maximizing:(bool)maximizing;	//!<	sort them by domain.  (Domains as open intervals MUST BE DISJOINT!!!!)
 
--(id)initWithLineSegmentsPartialFloatEndomorphisms:(NSArray*)lineSegmentPartialFloatEndomorphisms maximizing:(bool)maximizing;	//!<	sort them by domain.
++(PiecewiseLinearPartialFloatEndomorphism*)minUnionPiecewiseLinearPFEWithPiecewiseLinearPFE0:(PiecewiseLinearPartialFloatEndomorphism*)piecewiseLinearPFE0 piecewiseLinearPFE1:(PiecewiseLinearPartialFloatEndomorphism*)piecewiseLinearPFE1;
++(PiecewiseLinearPartialFloatEndomorphism*)maxUnionPiecewiseLinearPFEWithPiecewiseLinearPFE0:(PiecewiseLinearPartialFloatEndomorphism*)piecewiseLinearPFE0 piecewiseLinearPFE1:(PiecewiseLinearPartialFloatEndomorphism*)piecewiseLinearPFE1;
+
+//computes f = f1 - f0 wherever both are defined.
++(PiecewiseLinearPartialFloatEndomorphism*)differenceOnIntersectionPiecewiseLinearPFEWithPiecewiseLinearPFE0:(PiecewiseLinearPartialFloatEndomorphism*)piecewiseLinearPFE0 piecewiseLinearPFE1:(PiecewiseLinearPartialFloatEndomorphism*)piecewiseLinearPFE1;
+
+-(id)initWithLineSegmentPFEs:(NSArray*)lineSegmentPFEs maximizing:(bool)maximizing;	//!<	sort them by domain.
+-(float)minimumValue;
+-(float)maximumValue;
+
+@end
+
+@interface PiecewiseLinearPartialFloatMinMaxEndomorphismPair : NSObject
+
+@property	(nonatomic, readonly, strong)	PiecewiseLinearPartialFloatEndomorphism*	minPFE;
+@property	(nonatomic, readonly, strong)	PiecewiseLinearPartialFloatEndomorphism*	maxPFE;
+
++(PiecewiseLinearPartialFloatMinMaxEndomorphismPair*)piecewiseLinearPFEPairWithMinPFE:(PiecewiseLinearPartialFloatEndomorphism*)minPFE maxPFE:(PiecewiseLinearPartialFloatEndomorphism*)maxPFE;
+
++(PiecewiseLinearPartialFloatMinMaxEndomorphismPair*)unionPiecewiseLinearPFEPairWithPiecewiseLinearPFEPairs:(NSArray*)piecewiseLinearPFEPairs;
+//+(PiecewiseLinearPartialFloatMinMaxEndomorphismPair*)intersectionPiecewiseLinearPFEPairWithPiecewiseLinearPFEPairs:(NSArray*)piecewiseLinearPFEPairs;
+//+(PiecewiseLinearPartialFloatMinMaxEndomorphismPair*)differencePiecewiseLinearPFEPairWithPiecewiseLinearPFEPairs:(NSArray*)piecewiseLinearPFEPairs;
+
+-(id)initWithMinPFE:(PiecewiseLinearPartialFloatEndomorphism*)minPFE maxPFE:(PiecewiseLinearPartialFloatEndomorphism*)maxPFE;
 
 @end
 
 //!	A protocol for polygon tetris objects
 @protocol PolygonTetrisCEGObject
 
-@property	(nonatomic, readonly, strong)	PiecewiseLinearPartialFloatEndomorphism*	upperPartialFloatEndomorphism;
-@property	(nonatomic, readonly, strong)	PiecewiseLinearPartialFloatEndomorphism*	lowerPartialFloatEndomorphism;
+@property	(nonatomic, readonly, strong)	PiecewiseLinearPartialFloatMinMaxEndomorphismPair* piecewiseLinearPartialFloatMinMaxEndomorphismPair;
+
+-(void)moveUpByFloat:(float)value;
+
+//@property	(nonatomic, readonly, strong)	PiecewiseLinearPartialFloatEndomorphism*	upperPartialFloatEndomorphism;
+//@property	(nonatomic, readonly, strong)	PiecewiseLinearPartialFloatEndomorphism*	lowerPartialFloatEndomorphism;
 
 @end
 
@@ -80,15 +107,17 @@
 
 @interface PolygonTetrisCEGUnion : CEGUnion <PolygonTetrisCEGObject>
 
-@end
-
-@interface PolygonTetrisCEGIntersection : CEGIntersection <PolygonTetrisCEGObject>
++(PolygonTetrisCEGUnion*)polygonTetrisCEGUnionWithObjects:(NSArray*)objects;
 
 @end
 
-@interface PolygonTetrisCEGDifference : CEGDifference <PolygonTetrisCEGObject>
-
-@end
+//@interface PolygonTetrisCEGIntersection : CEGIntersection <PolygonTetrisCEGObject>
+//
+//@end
+//
+//@interface PolygonTetrisCEGDifference : CEGDifference <PolygonTetrisCEGObject>
+//
+//@end
 
 @interface PolygonTetrisSystem : NSObject
 
