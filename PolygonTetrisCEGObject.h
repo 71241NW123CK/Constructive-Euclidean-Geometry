@@ -91,6 +91,7 @@
 @protocol PolygonTetrisCEGObject
 
 @property	(nonatomic, readonly, strong)	PiecewiseLinearPartialFloatMinMaxEndomorphismPair* piecewiseLinearPartialFloatMinMaxEndomorphismPair;
+-(void)draw;
 
 -(void)moveUpByFloat:(float)value;
 
@@ -104,6 +105,8 @@
 @property	(nonatomic, readonly)	CGPoint vertex0;
 @property	(nonatomic, readonly)	CGPoint vertex1;
 @property	(nonatomic, readonly)	CGPoint vertex2;
+
++(PolygonTetrisCEGTriangle*)polygonTetrisCEGTriangleWithVertex0:(CGPoint)vertex0 vertex1:(CGPoint)vertex1 vertex2:(CGPoint)vertex2;
 
 -(id)initWithVertex0:(CGPoint)vertex0 vertex1:(CGPoint)vertex1 vertex2:(CGPoint)vertex2;
 
@@ -128,8 +131,20 @@
 @property	(nonatomic, readonly)	float	floorHeight;
 @property	(nonatomic, readonly, strong)	id<PolygonTetrisCEGObject>	polygonTetrisCEGObject;
 
++(PolygonTetrisSystem*)polygonTetrisSystemWithFloorHeight:(float)floorHeight;
+
+-(id)initWithFloorHeight:(float)floorHeight;
+
 -(id)initWithFloorHeight:(float)floorHeight polygonTetrisCEGObject:(id<PolygonTetrisCEGObject>)polygonTetrisCEGObject;//drop an object onto the floor
 
 -(void)addPolygonTetrisCEGObject:(id<PolygonTetrisCEGObject>)polygonTetrisCEGObject;//drop an object into the system, unioning the result with self.polygonTetrisCEGObject and setting the union as the value of self.polygonTetrisCEGObject.
+
+@end
+
+@interface PolygonTetrisPacking : NSObject	//goes through the permutations of an array (a short one!) to find the minimum packing.
+
+@property	(nonatomic, readonly, strong)	NSArray*	objectsInOptimalOrder;
+
+-(id)initWithObjects:(NSArray*)objects;
 
 @end

@@ -58,9 +58,13 @@
 
 +(CGPoint)pointOfIntersectionBetweenLineSegmentPFE0:(LineSegmentPartialFloatEndomorphism*)lineSegmentPFE0 andLineSegmentPFE1:(LineSegmentPartialFloatEndomorphism*)lineSegmentPFE1;
 
++(float)solutionForSystemWithLineSegmentPFE0:(LineSegmentPartialFloatEndomorphism*)lineSegmentPFE0 andLineSegmentPFE1:(LineSegmentPartialFloatEndomorphism*)lineSegmentPFE1;
+
 -(void)moveUpByFloat:(float)value;
 
 -(float)slope;
+
+-(NSString*)stringValue;
 
 @end
 
@@ -101,6 +105,30 @@
 	return CGPointMake(intersectionX, [lineSegmentPFE0 floatValueForFloatInput:intersectionX]);
 }
 
++(float)solutionForSystemWithLineSegmentPFE0:(LineSegmentPartialFloatEndomorphism*)lineSegmentPFE0 andLineSegmentPFE1:(LineSegmentPartialFloatEndomorphism*)lineSegmentPFE1
+{
+	float domainOverlapMinimum = MAX(lineSegmentPFE0.domainMinimum, lineSegmentPFE1.domainMinimum);
+	float domainOverlapMaximum = MIN(lineSegmentPFE0.domainMaximum, lineSegmentPFE1.domainMaximum);
+	if(domainOverlapMaximum < domainOverlapMinimum)	return nanf("");
+	if(domainOverlapMaximum == domainOverlapMinimum)	return domainOverlapMinimum;
+	if([lineSegmentPFE0 floatValueForFloatInput:domainOverlapMaximum] == [lineSegmentPFE1 floatValueForFloatInput:domainOverlapMaximum])	return domainOverlapMaximum;
+	if([lineSegmentPFE0 floatValueForFloatInput:domainOverlapMinimum] == [lineSegmentPFE1 floatValueForFloatInput:domainOverlapMinimum])	return domainOverlapMinimum;
+	if([lineSegmentPFE0 floatValueForFloatInput:domainOverlapMinimum] < [lineSegmentPFE1 floatValueForFloatInput:domainOverlapMinimum])
+	{
+		if([lineSegmentPFE0 floatValueForFloatInput:domainOverlapMaximum] < [lineSegmentPFE1 floatValueForFloatInput:domainOverlapMaximum])	return nanf("");
+	}
+	else
+	{
+		if([lineSegmentPFE1 floatValueForFloatInput:domainOverlapMaximum] < [lineSegmentPFE0 floatValueForFloatInput:domainOverlapMaximum])	return nanf("");
+	}
+	float initialDifference = [lineSegmentPFE1 floatValueForFloatInput:domainOverlapMinimum] - [lineSegmentPFE0 floatValueForFloatInput:domainOverlapMinimum];
+	float finalDifference = [lineSegmentPFE1 floatValueForFloatInput:domainOverlapMaximum] - [lineSegmentPFE0 floatValueForFloatInput:domainOverlapMaximum];
+	float changeInDifference = finalDifference - initialDifference;
+	float intersectionX = domainOverlapMinimum - (initialDifference / changeInDifference) * (domainOverlapMaximum - domainOverlapMinimum);
+	NSLog(@"f0: (%f, %f)\tf1: (%f, %f)", intersectionX, [lineSegmentPFE0 floatValueForFloatInput:intersectionX], intersectionX, [lineSegmentPFE1 floatValueForFloatInput:intersectionX]);
+	return intersectionX;
+}
+
 -(float)slope{return [self.lineSegment2D slope];}
 
 -(id)initWithLineSegment2D:(LineSegment2D*)lineSegment2D
@@ -137,6 +165,8 @@
 	self.floatValueAtDomainMaximum += value;
 }
 
+-(NSString*)stringValue{return [NSString stringWithFormat:@"(%f, %f), (%f, %f)", self.domainMinimum, self.floatValueAtDomainMinimum, self.domainMaximum, self.floatValueAtDomainMaximum];}
+
 @end
 
 @interface PiecewiseLinearPartialFloatEndomorphism()
@@ -157,594 +187,239 @@
 
 +(PiecewiseLinearPartialFloatEndomorphism*)minUnionPiecewiseLinearPFEWithPiecewiseLinearPFE0:(PiecewiseLinearPartialFloatEndomorphism*)piecewiseLinearPFE0 piecewiseLinearPFE1:(PiecewiseLinearPartialFloatEndomorphism*)piecewiseLinearPFE1
 {
-	NSMutableArray* m_lineSegmentPFEs = [NSMutableArray array];
+	NSLog(@"entering minUnion");
+	NSLog(@"f0:%@", mapWithSelector(@selector(stringValue), piecewiseLinearPFE0.disjointLineSegmentPFEsWithDomainsInAscendingOrder));
+	NSLog(@"f1:%@", mapWithSelector(@selector(stringValue), piecewiseLinearPFE1.disjointLineSegmentPFEsWithDomainsInAscendingOrder));
+
+	NSMutableArray* m_criticalInputIntervals = [NSMutableArray array];//the domain (sans a zero-measure set of trivial points) of the result.
 	NSEnumerator* f0Enumerator = [piecewiseLinearPFE0.disjointLineSegmentPFEsWithDomainsInAscendingOrder objectEnumerator];
 	NSEnumerator* f1Enumerator = [piecewiseLinearPFE1.disjointLineSegmentPFEsWithDomainsInAscendingOrder objectEnumerator];
-	bool noStartPoint = true;
+
 	LineSegmentPartialFloatEndomorphism* f0 = [f0Enumerator nextObject];
 	LineSegmentPartialFloatEndomorphism* f1 = [f1Enumerator nextObject];
 	if(f0 == nil)	return piecewiseLinearPFE1;
 	if(f1 == nil)	return piecewiseLinearPFE0;
-	CGPoint segmentStartPoint;
-	CGPoint segmentEndPoint;
-	while(f0 || f1)//we lay down a (possibly extraneous) segment each run through the loop.
+	float startValue = MIN(f0.domainMinimum, f1.domainMinimum);
+	while(f0 || f1)
 	{
-		if(noStartPoint)
+		//are we done with f0 or f1?
+		if(!f0 || (f1 && f1.domainMaximum <= f0.domainMinimum))	//f0 has been exhausted or starts after f1 ends.  Increment startValue if left of domain of f1.  
 		{
-			if(!f0)
-			{
-				segmentStartPoint = CGPointMake(f1.domainMinimum, f1.floatValueAtDomainMinimum);
-			}
-			else	if(!f1)
-			{
-				segmentStartPoint = CGPointMake(f0.domainMinimum, f0.floatValueAtDomainMinimum);
-			}
-			else	if(f0.domainMinimum < f1.domainMinimum || (f0.domainMinimum == f1.domainMinimum && (f0.floatValueAtDomainMinimum < f1.floatValueAtDomainMinimum || (f0.floatValueAtDomainMinimum == f1.floatValueAtDomainMinimum && [f0 slope] < [f1 slope]))))
-			{
-				segmentStartPoint = CGPointMake(f0.domainMinimum, f0.floatValueAtDomainMinimum);
-			}
-			else
-			{
-				segmentStartPoint = CGPointMake(f1.domainMinimum, f1.floatValueAtDomainMinimum);
-			}
-			noStartPoint = false;
+			if(startValue < f1.domainMinimum)	startValue = f1.domainMinimum;
+			[m_criticalInputIntervals addObject:[NSArray arrayWithObjects:[NSNumber numberWithFloat:startValue], [NSNumber numberWithFloat:f1.domainMaximum], nil]];
+			startValue = f1.domainMaximum;
+			f1 = [f1Enumerator nextObject];
 		}
-		if(!f0)
+		else	if(!f1 || (f0 && f0.domainMaximum <= f1.domainMinimum))	//f1 has been exhausted or starts after f0 ends.  Increment startValue if left of domain of f0.
 		{
-			segmentEndPoint = CGPointMake(f1.domainMaximum, f1.floatValueAtDomainMaximum);
-			[m_lineSegmentPFEs addObject:[LineSegmentPartialFloatEndomorphism lineSegmentPFEWithLineSegment2D:[LineSegment2D lineSegment2DWithVertex0:segmentStartPoint vertex1:segmentEndPoint]]];
-			if((f1 = [f1Enumerator nextObject]))	segmentStartPoint = CGPointMake(f1.domainMinimum, f1.floatValueAtDomainMinimum);
+			if(startValue < f0.domainMinimum)	startValue = f0.domainMinimum;
+			[m_criticalInputIntervals addObject:[NSArray arrayWithObjects:[NSNumber numberWithFloat:startValue], [NSNumber numberWithFloat:f0.domainMaximum], nil]];
+			startValue = f0.domainMaximum;
+			f0 = [f0Enumerator nextObject];
 		}
-		else	if(!f1)
+		else
 		{
-			segmentEndPoint = CGPointMake(f0.domainMaximum, f0.floatValueAtDomainMaximum);
-			[m_lineSegmentPFEs addObject:[LineSegmentPartialFloatEndomorphism lineSegmentPFEWithLineSegment2D:[LineSegment2D lineSegment2DWithVertex0:segmentStartPoint vertex1:segmentEndPoint]]];
-			if((f0 = [f1Enumerator nextObject]))	segmentStartPoint = CGPointMake(f0.domainMinimum, f0.floatValueAtDomainMinimum);
-		}
-		else	if(segmentStartPoint.x < f0.domainMinimum)//starting before domain of f0.
-		{
-			//is there domain overlap?
-			if(f1.domainMaximum < f0.domainMinimum)//there is no domain overlap.
+			if(startValue < f0.domainMinimum && startValue < f1.domainMinimum)//need to cross the chasm...
 			{
-				//lay down the rest of f1.  Then ditch 
-				segmentEndPoint = CGPointMake(f1.domainMaximum, f1.floatValueAtDomainMaximum);
-				[m_lineSegmentPFEs addObject:[LineSegmentPartialFloatEndomorphism lineSegmentPFEWithLineSegment2D:[LineSegment2D lineSegment2DWithVertex0:segmentStartPoint vertex1:segmentEndPoint]]];
-				segmentStartPoint = segmentEndPoint;
-				f1 = [f1Enumerator nextObject];
-				noStartPoint = true;
+				startValue = MIN(f0.domainMinimum, f1.domainMinimum);//cross the chasm.
 			}
-			else//there is domain overlap.
+			if(f0.domainMinimum <= startValue && f1.domainMinimum <= startValue)//we begin in a domain intersection
 			{
-				//lay down f1 until the domain overlap.  Then recompute segmentStartPoint.
-				segmentEndPoint = CGPointMake(f0.domainMinimum, [f1 floatValueForFloatInput:f0.domainMinimum]);
-				[m_lineSegmentPFEs addObject:[LineSegmentPartialFloatEndomorphism lineSegmentPFEWithLineSegment2D:[LineSegment2D lineSegment2DWithVertex0:segmentStartPoint vertex1:segmentEndPoint]]];
-				if(f0.floatValueAtDomainMinimum < segmentEndPoint.y || (f0.floatValueAtDomainMinimum == segmentEndPoint.y && [f0 slope] < [f1 slope]))
+				float domainIntersectionMaximum = MIN(f0.domainMaximum, f1.domainMaximum);
+				//either they cross before domainIntersectionMaximum, the domains end at the same time, or one domain ends before the other.
+				if(([f1 floatValueForFloatInput:startValue] - [f0 floatValueForFloatInput:startValue]) * ([f1 floatValueForFloatInput:domainIntersectionMaximum] - [f0 floatValueForFloatInput:domainIntersectionMaximum]) < 0)
 				{
-					segmentStartPoint = CGPointMake(f0.domainMinimum, f0.floatValueAtDomainMinimum);
+					//the two cross before the domain intersection maximum.
+					//compute the crossing point.
+					float crossingInput = [LineSegmentPartialFloatEndomorphism solutionForSystemWithLineSegmentPFE0:f0 andLineSegmentPFE1:f1];
+					[m_criticalInputIntervals addObject:[NSArray arrayWithObjects:[NSNumber numberWithFloat:startValue], [NSNumber numberWithFloat:crossingInput], nil]];
+					startValue = crossingInput;
 				}
 				else
 				{
-					segmentStartPoint = segmentEndPoint;
+					[m_criticalInputIntervals addObject:[NSArray arrayWithObjects:[NSNumber numberWithFloat:startValue], [NSNumber numberWithFloat:domainIntersectionMaximum], nil]];
+					startValue = domainIntersectionMaximum;
+					if(f0.domainMaximum == domainIntersectionMaximum)	f0 = [f0Enumerator nextObject];
+					if(f1.domainMaximum == domainIntersectionMaximum)	f1 = [f1Enumerator nextObject];
 				}
 			}
-		}
-		else if(segmentStartPoint.x < f1.domainMinimum)//starting before domain of f1.
-		{
-			//is there domain overlap?
-			if(f0.domainMaximum < f1.domainMinimum)//there is no domain overlap.
+			else//we do not begin in a domain intersection, but the current intervals' domains do intersect.
 			{
-				//lay down the rest of f0.  Then ditch
-				segmentEndPoint = CGPointMake(f0.domainMaximum, f0.floatValueAtDomainMaximum);
-				[m_lineSegmentPFEs addObject:[LineSegmentPartialFloatEndomorphism lineSegmentPFEWithLineSegment2D:[LineSegment2D lineSegment2DWithVertex0:segmentStartPoint vertex1:segmentEndPoint]]];
-				segmentStartPoint = segmentEndPoint;
-				f0 = [f0Enumerator nextObject];
-				noStartPoint = true;
-			}
-			else //there is domain overlap.
-			{
-				//lay down f0 until the domain overlap.  Then recompute segmentStartPoint.
-				segmentEndPoint = CGPointMake(f1.domainMinimum, [f0 floatValueForFloatInput:f1.domainMinimum]);
-				[m_lineSegmentPFEs addObject:[LineSegmentPartialFloatEndomorphism lineSegmentPFEWithLineSegment2D:[LineSegment2D lineSegment2DWithVertex0:segmentStartPoint vertex1:segmentEndPoint]]];
-				if(f1.floatValueAtDomainMinimum < segmentEndPoint.y || (f1.floatValueAtDomainMinimum == segmentEndPoint.y && [f1 slope] < [f0 slope]))
-				{
-					segmentStartPoint = CGPointMake(f1.domainMinimum, f1.floatValueAtDomainMinimum);
-				}
-				else
-				{
-					segmentStartPoint = segmentEndPoint;
-				}
-			}
-		}
-		else//starting in a domain overlap.
-		{
-			//which function ends first?
-			if(f0.domainMaximum < f1.domainMaximum)//f0 ends first.
-			{
-				//do both functions contain the start point?
-				if([f0 floatValueForFloatInput:segmentStartPoint.x] < [f1 floatValueForFloatInput:segmentStartPoint.x])//f0 is smaller at the start.
-				{
-					//is there crossover between the start point and the end of the domain of f0?
-					if(f0.floatValueAtDomainMaximum <= [f1 floatValueForFloatInput:f0.domainMaximum])//there is no crossover.
-					{
-						//lay down the remainder of f0.  increment f0.  recompute segmentStartPoint
-						segmentEndPoint = CGPointMake(f0.domainMaximum, f0.floatValueAtDomainMaximum);
-						[m_lineSegmentPFEs addObject:[LineSegmentPartialFloatEndomorphism lineSegmentPFEWithLineSegment2D:[LineSegment2D lineSegment2DWithVertex0:segmentStartPoint vertex1:segmentEndPoint]]];
-						if((f0 = [f0Enumerator nextObject]))
-						{
-							if(f0.domainMinimum == segmentEndPoint.x)
-							{
-								if(f0.floatValueAtDomainMinimum < [f1 floatValueForFloatInput:f0.domainMinimum])	segmentStartPoint = CGPointMake(f0.domainMinimum, f0.floatValueAtDomainMinimum);
-								else																				segmentStartPoint = CGPointMake(f0.domainMinimum, [f1 floatValueForFloatInput:f0.domainMinimum]);
-							}
-							else	segmentStartPoint = CGPointMake(segmentEndPoint.x, [f1 floatValueForFloatInput:segmentEndPoint.x]);
-						}
-						else	segmentStartPoint = CGPointMake(segmentEndPoint.x, [f1 floatValueForFloatInput:segmentEndPoint.x]);
-					}
-					else	//there is crossover.
-					{
-						//compute the crossing point.  Lay down f0 until the crossing point.  Set segmentStartPoint = segmentEndPoint.
-						segmentEndPoint = [LineSegmentPartialFloatEndomorphism pointOfIntersectionBetweenLineSegmentPFE0:f0 andLineSegmentPFE1:f1];
-						[m_lineSegmentPFEs addObject:[LineSegmentPartialFloatEndomorphism lineSegmentPFEWithLineSegment2D:[LineSegment2D lineSegment2DWithVertex0:segmentStartPoint vertex1:segmentEndPoint]]];
-						segmentStartPoint = segmentEndPoint;
-					}
-				}
-				else if([f0 floatValueForFloatInput:segmentStartPoint.x] == [f1 floatValueForFloatInput:segmentStartPoint.x])//f0 = f1 at the start.
-				{
-					//are their slopes equal?
-					if([f1 slope] < [f0 slope])//f1 has smaller slope.
-					{
-						//Lay down f1 until the end of the domain of f0.  Increment f0 and recompute the startPoint.
-						segmentEndPoint = CGPointMake(f0.domainMaximum, [f1 floatValueForFloatInput:f0.domainMaximum]);
-						[m_lineSegmentPFEs addObject:[LineSegmentPartialFloatEndomorphism lineSegmentPFEWithLineSegment2D:[LineSegment2D lineSegment2DWithVertex0:segmentStartPoint vertex1:segmentEndPoint]]];
-						if((f0 = [f0Enumerator nextObject]))
-						{
-							if(f0.domainMinimum == segmentEndPoint.x)
-							{
-								if(f0.floatValueAtDomainMinimum < [f1 floatValueForFloatInput:f0.domainMinimum])	segmentStartPoint = CGPointMake(f0.domainMinimum, f0.floatValueAtDomainMinimum);
-								else																				segmentStartPoint = CGPointMake(f0.domainMinimum, [f1 floatValueForFloatInput:f0.domainMinimum]);
-							}
-							else	segmentStartPoint = CGPointMake(segmentEndPoint.x, [f1 floatValueForFloatInput:segmentEndPoint.x]);
-						}
-						else	segmentStartPoint = CGPointMake(segmentEndPoint.x, [f1 floatValueForFloatInput:segmentEndPoint.x]);
-					}
-					else//they have the same slope or f0 has smaller slope.
-					{
-						//lay down the remainder of f0.  increment f0.  recompute segmentStartPoint.
-						segmentEndPoint = CGPointMake(f0.domainMaximum, f0.floatValueAtDomainMaximum);
-						[m_lineSegmentPFEs addObject:[LineSegmentPartialFloatEndomorphism lineSegmentPFEWithLineSegment2D:[LineSegment2D lineSegment2DWithVertex0:segmentStartPoint vertex1:segmentEndPoint]]];
-						if((f0 = [f0Enumerator nextObject]))
-						{
-							if(f0.domainMinimum == segmentEndPoint.x)
-							{
-								if(f0.floatValueAtDomainMinimum < [f1 floatValueForFloatInput:f0.domainMinimum])	segmentStartPoint = CGPointMake(f0.domainMinimum, f0.floatValueAtDomainMinimum);
-								else																				segmentStartPoint = CGPointMake(f0.domainMinimum, [f1 floatValueForFloatInput:f0.domainMinimum]);
-							}
-							else	segmentStartPoint = CGPointMake(segmentEndPoint.x, [f1 floatValueForFloatInput:segmentEndPoint.x]);
-						}
-						else	segmentStartPoint = CGPointMake(segmentEndPoint.x, [f1 floatValueForFloatInput:segmentEndPoint.x]);
-					}
-				}
-				else//f1 is smaller at the start.
-				{
-					//is there crossover between the start point and the end of the domain of f0?
-					if([f1 floatValueForFloatInput:f0.domainMaximum] <= f0.floatValueAtDomainMaximum)//there is no crossover.
-					{
-						//lay down f1 until the end of the domain of f0.  Increment f0.  Recompute segmentStartPoint
-						segmentEndPoint = CGPointMake(f0.domainMaximum, [f1 floatValueForFloatInput:f0.domainMaximum]);
-						[m_lineSegmentPFEs addObject:[LineSegmentPartialFloatEndomorphism lineSegmentPFEWithLineSegment2D:[LineSegment2D lineSegment2DWithVertex0:segmentStartPoint vertex1:segmentEndPoint]]];
-						if((f0 = [f0Enumerator nextObject]))
-						{
-							if(f0.domainMinimum == segmentEndPoint.x)
-							{
-								if(f0.floatValueAtDomainMinimum < [f1 floatValueForFloatInput:f0.domainMinimum])	segmentStartPoint = CGPointMake(f0.domainMinimum, f0.floatValueAtDomainMinimum);
-								else																				segmentStartPoint = CGPointMake(f0.domainMinimum, [f1 floatValueForFloatInput:f0.domainMinimum]);
-							}
-							else	segmentStartPoint = CGPointMake(segmentEndPoint.x, [f1 floatValueForFloatInput:segmentEndPoint.x]);
-						}
-						else	segmentStartPoint = CGPointMake(segmentEndPoint.x, [f1 floatValueForFloatInput:segmentEndPoint.x]);
-					}
-					else	//there is crossover.
-					{
-						//compute the crossing point.  Lay down f1 until the crossing point.  Set segmentStartPoint = segmentEndPoint.
-						segmentEndPoint = [LineSegmentPartialFloatEndomorphism pointOfIntersectionBetweenLineSegmentPFE0:f0 andLineSegmentPFE1:f1];
-						[m_lineSegmentPFEs addObject:[LineSegmentPartialFloatEndomorphism lineSegmentPFEWithLineSegment2D:[LineSegment2D lineSegment2DWithVertex0:segmentStartPoint vertex1:segmentEndPoint]]];
-						segmentStartPoint = segmentEndPoint;
-					}
-				}
-			}
-			else//f1 ends first
-			{
-				//do both functions contain the start point?
-				if([f1 floatValueForFloatInput:segmentStartPoint.x] < [f0 floatValueForFloatInput:segmentStartPoint.x])//f1 is smaller at the start.
-				{
-					//is there crossover between the start point and the end of the domain of f1?
-					if(f1.floatValueAtDomainMaximum <= [f0 floatValueForFloatInput:f1.domainMaximum])//there is no crossover.
-					{
-						//lay down the remainder of f1.  increment f1.  recompute segmentStartPoint
-						segmentEndPoint = CGPointMake(f1.domainMaximum, f1.floatValueAtDomainMaximum);
-						[m_lineSegmentPFEs addObject:[LineSegmentPartialFloatEndomorphism lineSegmentPFEWithLineSegment2D:[LineSegment2D lineSegment2DWithVertex0:segmentStartPoint vertex1:segmentEndPoint]]];
-						if((f1 = [f1Enumerator nextObject]))
-						{
-							if(f1.domainMinimum == segmentEndPoint.x)
-							{
-								if(f1.floatValueAtDomainMinimum < [f0 floatValueForFloatInput:f1.domainMinimum])	segmentStartPoint = CGPointMake(f1.domainMinimum, f1.floatValueAtDomainMinimum);
-								else																				segmentStartPoint = CGPointMake(f1.domainMinimum, [f0 floatValueForFloatInput:f1.domainMinimum]);
-							}
-							else	segmentStartPoint = CGPointMake(segmentEndPoint.x, [f0 floatValueForFloatInput:segmentEndPoint.x]);
-						}
-						else	segmentStartPoint = CGPointMake(segmentEndPoint.x, [f0 floatValueForFloatInput:segmentEndPoint.x]);
-					}
-					else	//there is crossover.
-					{
-						//compute the crossing point.  Lay down f1 until the crossing point.  Set segmentStartPoint = segmentEndPoint.
-						segmentEndPoint = [LineSegmentPartialFloatEndomorphism pointOfIntersectionBetweenLineSegmentPFE0:f1 andLineSegmentPFE1:f0];
-						[m_lineSegmentPFEs addObject:[LineSegmentPartialFloatEndomorphism lineSegmentPFEWithLineSegment2D:[LineSegment2D lineSegment2DWithVertex0:segmentStartPoint vertex1:segmentEndPoint]]];
-						segmentStartPoint = segmentEndPoint;
-					}
-				}
-				else if([f1 floatValueForFloatInput:segmentStartPoint.x] == [f0 floatValueForFloatInput:segmentStartPoint.x])//f1 = f0 at the start.
-				{
-					//are their slopes equal?
-					if([f0 slope] < [f1 slope])//f0 has smaller slope.
-					{
-						//Lay down f0 until the end of the domain of f1.  Increment f1 and recompute the startPoint.
-						segmentEndPoint = CGPointMake(f1.domainMaximum, [f0 floatValueForFloatInput:f1.domainMaximum]);
-						[m_lineSegmentPFEs addObject:[LineSegmentPartialFloatEndomorphism lineSegmentPFEWithLineSegment2D:[LineSegment2D lineSegment2DWithVertex0:segmentStartPoint vertex1:segmentEndPoint]]];
-						if((f1 = [f1Enumerator nextObject]))
-						{
-							if(f1.domainMinimum == segmentEndPoint.x)
-							{
-								if(f1.floatValueAtDomainMinimum < [f0 floatValueForFloatInput:f1.domainMinimum])	segmentStartPoint = CGPointMake(f1.domainMinimum, f1.floatValueAtDomainMinimum);
-								else																				segmentStartPoint = CGPointMake(f1.domainMinimum, [f0 floatValueForFloatInput:f1.domainMinimum]);
-							}
-							else	segmentStartPoint = CGPointMake(segmentEndPoint.x, [f0 floatValueForFloatInput:segmentEndPoint.x]);
-						}
-						else	segmentStartPoint = CGPointMake(segmentEndPoint.x, [f0 floatValueForFloatInput:segmentEndPoint.x]);
-					}
-					else//they have the same slope or f1 has smaller slope.
-					{
-						//lay down the remainder of f1.  increment f1.  recompute segmentStartPoint.
-						segmentEndPoint = CGPointMake(f1.domainMaximum, f1.floatValueAtDomainMaximum);
-						[m_lineSegmentPFEs addObject:[LineSegmentPartialFloatEndomorphism lineSegmentPFEWithLineSegment2D:[LineSegment2D lineSegment2DWithVertex0:segmentStartPoint vertex1:segmentEndPoint]]];
-						if((f1 = [f1Enumerator nextObject]))
-						{
-							if(f1.domainMinimum == segmentEndPoint.x)
-							{
-								if(f1.floatValueAtDomainMinimum < [f0 floatValueForFloatInput:f1.domainMinimum])	segmentStartPoint = CGPointMake(f1.domainMinimum, f1.floatValueAtDomainMinimum);
-								else																				segmentStartPoint = CGPointMake(f1.domainMinimum, [f0 floatValueForFloatInput:f1.domainMinimum]);
-							}
-							else	segmentStartPoint = CGPointMake(segmentEndPoint.x, [f0 floatValueForFloatInput:segmentEndPoint.x]);
-						}
-						else	segmentStartPoint = CGPointMake(segmentEndPoint.x, [f0 floatValueForFloatInput:segmentEndPoint.x]);
-					}
-				}
-				else//f0 is smaller at the start.
-				{
-					//is there crossover between the start point and the end of the domain of f1?
-					if([f0 floatValueForFloatInput:f1.domainMaximum] <= f1.floatValueAtDomainMaximum)//there is no crossover.
-					{
-						//lay down f0 until the end of the domain of f1.  Increment f1.  Recompute segmentStartPoint
-						segmentEndPoint = CGPointMake(f1.domainMaximum, [f0 floatValueForFloatInput:f1.domainMaximum]);
-						[m_lineSegmentPFEs addObject:[LineSegmentPartialFloatEndomorphism lineSegmentPFEWithLineSegment2D:[LineSegment2D lineSegment2DWithVertex0:segmentStartPoint vertex1:segmentEndPoint]]];
-						if((f1 = [f1Enumerator nextObject]))
-						{
-							if(f1.domainMinimum == segmentEndPoint.x)
-							{
-								if(f1.floatValueAtDomainMinimum < [f0 floatValueForFloatInput:f1.domainMinimum])	segmentStartPoint = CGPointMake(f1.domainMinimum, f1.floatValueAtDomainMinimum);
-								else																				segmentStartPoint = CGPointMake(f1.domainMinimum, [f0 floatValueForFloatInput:f1.domainMinimum]);
-							}
-							else	segmentStartPoint = CGPointMake(segmentEndPoint.x, [f0 floatValueForFloatInput:segmentEndPoint.x]);
-						}
-						else	segmentStartPoint = CGPointMake(segmentEndPoint.x, [f0 floatValueForFloatInput:segmentEndPoint.x]);
-					}
-					else	//there is crossover.
-					{
-						//compute the crossing point.  Lay down f0 until the crossing point.  Set segmentStartPoint = segmentEndPoint.
-						segmentEndPoint = [LineSegmentPartialFloatEndomorphism pointOfIntersectionBetweenLineSegmentPFE0:f1 andLineSegmentPFE1:f0];
-						[m_lineSegmentPFEs addObject:[LineSegmentPartialFloatEndomorphism lineSegmentPFEWithLineSegment2D:[LineSegment2D lineSegment2DWithVertex0:segmentStartPoint vertex1:segmentEndPoint]]];
-						segmentStartPoint = segmentEndPoint;
-					}
-				}
+				float domainIntersectionMinimum = MAX(f0.domainMinimum, f1.domainMinimum);
+				[m_criticalInputIntervals addObject:[NSArray arrayWithObjects:[NSNumber numberWithFloat:startValue], [NSNumber numberWithFloat:domainIntersectionMinimum], nil]];
+				startValue = domainIntersectionMinimum;
 			}
 		}
 	}
+	
+	NSLog(@"critical input intervals and values:");
+	[m_criticalInputIntervals
+		enumerateObjectsUsingBlock:
+			^(id obj, NSUInteger idx, BOOL *stop)
+			{
+				float x0 = [(NSNumber*)[(NSArray*)obj objectAtIndex:0] floatValue];
+				float x1 = [(NSNumber*)[(NSArray*)obj objectAtIndex:1] floatValue];
+				NSLog(@"x0: %f\tf0: %f\tf1: %f", x0, [piecewiseLinearPFE0 floatValueForFloatInput:x0], [piecewiseLinearPFE1 floatValueForFloatInput:x0]);
+				NSLog(@"x1: %f\tf0: %f\tf1: %f", x1, [piecewiseLinearPFE0 floatValueForFloatInput:x1], [piecewiseLinearPFE1 floatValueForFloatInput:x1]);
+			}
+	];
+	
+	NSMutableArray* m_lineSegmentPFEs = [NSMutableArray array];
+	f0Enumerator = [piecewiseLinearPFE0.disjointLineSegmentPFEsWithDomainsInAscendingOrder objectEnumerator];
+	f1Enumerator = [piecewiseLinearPFE1.disjointLineSegmentPFEsWithDomainsInAscendingOrder objectEnumerator];
+	f0 = [f0Enumerator nextObject];
+	f1 = [f1Enumerator nextObject];
+	for(NSArray* criticalInputInterval in m_criticalInputIntervals)
+	{
+		float x0 = [(NSNumber*)[criticalInputInterval objectAtIndex:0] floatValue];
+		float x1 = [(NSNumber*)[criticalInputInterval objectAtIndex:1] floatValue];
+		//increment f0 and f1.
+		while(f0 && f0.domainMaximum <= x0)	f0 = [f0Enumerator nextObject];
+		while(f1 && f1.domainMaximum <= x0)	f1 = [f1Enumerator nextObject];
+		if(f0 && f0.domainMinimum <= x0)
+		{
+			if(f1 && f1.domainMinimum <= x0)
+			{
+				if([f0 floatValueForFloatInput:x0] < [f1 floatValueForFloatInput:x0] || [f0 floatValueForFloatInput:x1] < [f1 floatValueForFloatInput:x1])	//f0 is smaller.  Use it instead of f1 for this segment.
+				{
+					[m_lineSegmentPFEs addObject:[LineSegmentPartialFloatEndomorphism lineSegmentPFEWithLineSegment2D:[LineSegment2D lineSegment2DWithVertex0:CGPointMake(x0, [f0 floatValueForFloatInput:x0]) vertex1:CGPointMake(x1, [f0 floatValueForFloatInput:x1])]]];
+				}
+				else	//f1 is smaller.  Use it instead of f0 for this segment.
+				{
+					[m_lineSegmentPFEs addObject:[LineSegmentPartialFloatEndomorphism lineSegmentPFEWithLineSegment2D:[LineSegment2D lineSegment2DWithVertex0:CGPointMake(x0, [f1 floatValueForFloatInput:x0]) vertex1:CGPointMake(x1, [f1 floatValueForFloatInput:x1])]]];
+				}
+			}
+			else
+			{
+				[m_lineSegmentPFEs addObject:[LineSegmentPartialFloatEndomorphism lineSegmentPFEWithLineSegment2D:[LineSegment2D lineSegment2DWithVertex0:CGPointMake(x0, [f0 floatValueForFloatInput:x0]) vertex1:CGPointMake(x1, [f0 floatValueForFloatInput:x1])]]];
+			}
+		}
+		else	if(f1 && f1.domainMinimum <= [(NSNumber*)[criticalInputInterval objectAtIndex:0] floatValue])
+		{
+			[m_lineSegmentPFEs addObject:[LineSegmentPartialFloatEndomorphism lineSegmentPFEWithLineSegment2D:[LineSegment2D lineSegment2DWithVertex0:CGPointMake(x0, [f1 floatValueForFloatInput:x0]) vertex1:CGPointMake(x1, [f1 floatValueForFloatInput:x1])]]];
+		}
+		else
+		{
+			NSLog(@"INTERNAL LOGIC ERROR: exhausted f0 and f1 before we should have...");
+		}
+	}
+	if(f0)	if((f0 = [f0Enumerator nextObject]))	NSLog(@"INTERNAL LOGIC ERROR: f0 not exhausted!");
+	if(f1)	if((f1 = [f1Enumerator nextObject]))	NSLog(@"INTERNAL LOGIC ERROR: f1 not exhausted!");
+	NSLog(@"result line segments: %@", mapWithSelector(@selector(stringValue), m_lineSegmentPFEs));
+	NSLog(@"exiting minUnion");
 	return [PiecewiseLinearPartialFloatEndomorphism piecewiseLinearPFEWithLineSegmentPFEs:[NSArray arrayWithArray:m_lineSegmentPFEs] maximizing:false];
 }
 
 +(PiecewiseLinearPartialFloatEndomorphism*)maxUnionPiecewiseLinearPFEWithPiecewiseLinearPFE0:(PiecewiseLinearPartialFloatEndomorphism*)piecewiseLinearPFE0 piecewiseLinearPFE1:(PiecewiseLinearPartialFloatEndomorphism*)piecewiseLinearPFE1
 {
-	NSMutableArray* m_lineSegmentPFEs = [NSMutableArray array];
+	NSLog(@"entering maxUnion");
+
+	NSMutableArray* m_criticalInputIntervals = [NSMutableArray array];//the domain (sans a zero-measure set of trivial points) of the result.
 	NSEnumerator* f0Enumerator = [piecewiseLinearPFE0.disjointLineSegmentPFEsWithDomainsInAscendingOrder objectEnumerator];
 	NSEnumerator* f1Enumerator = [piecewiseLinearPFE1.disjointLineSegmentPFEsWithDomainsInAscendingOrder objectEnumerator];
-	bool noStartPoint = true;
+
 	LineSegmentPartialFloatEndomorphism* f0 = [f0Enumerator nextObject];
 	LineSegmentPartialFloatEndomorphism* f1 = [f1Enumerator nextObject];
 	if(f0 == nil)	return piecewiseLinearPFE1;
 	if(f1 == nil)	return piecewiseLinearPFE0;
-	CGPoint segmentStartPoint;
-	CGPoint segmentEndPoint;
-	while(f0 || f1)//we lay down a (possibly extraneous) segment each run through the loop.
+	float startValue = MIN(f0.domainMinimum, f1.domainMinimum);
+	while(f0 || f1)
 	{
-		if(noStartPoint)
+		//are we done with f0 or f1?
+		if(!f0 || (f1 && f1.domainMaximum <= f0.domainMinimum))	//f0 has been exhausted or starts after f1 ends.  Increment startValue if left of domain of f1.  
 		{
-			if(!f0)
-			{
-				segmentStartPoint = CGPointMake(f1.domainMinimum, f1.floatValueAtDomainMinimum);
-			}
-			else	if(!f1)
-			{
-				segmentStartPoint = CGPointMake(f0.domainMinimum, f0.floatValueAtDomainMinimum);
-			}
-			else	if(f0.domainMinimum < f1.domainMinimum || (f0.domainMinimum == f1.domainMinimum && (f0.floatValueAtDomainMinimum > f1.floatValueAtDomainMinimum || (f0.floatValueAtDomainMinimum == f1.floatValueAtDomainMinimum && [f0 slope] > [f1 slope]))))
-			{
-				segmentStartPoint = CGPointMake(f0.domainMinimum, f0.floatValueAtDomainMinimum);
-			}
-			else
-			{
-				segmentStartPoint = CGPointMake(f1.domainMinimum, f1.floatValueAtDomainMinimum);
-			}
-			noStartPoint = false;
+			if(startValue < f1.domainMinimum)	startValue = f1.domainMinimum;
+			[m_criticalInputIntervals addObject:[NSArray arrayWithObjects:[NSNumber numberWithFloat:startValue], [NSNumber numberWithFloat:f1.domainMaximum], nil]];
+			startValue = f1.domainMaximum;
+			f1 = [f1Enumerator nextObject];
 		}
-		if(!f0)
+		else	if(!f1 || (f0 && f0.domainMaximum <= f1.domainMinimum))	//f1 has been exhausted or starts after f0 ends.  Increment startValue if left of domain of f0.
 		{
-			segmentEndPoint = CGPointMake(f1.domainMaximum, f1.floatValueAtDomainMaximum);
-			[m_lineSegmentPFEs addObject:[LineSegmentPartialFloatEndomorphism lineSegmentPFEWithLineSegment2D:[LineSegment2D lineSegment2DWithVertex0:segmentStartPoint vertex1:segmentEndPoint]]];
-			if((f1 = [f1Enumerator nextObject]))	segmentStartPoint = CGPointMake(f1.domainMinimum, f1.floatValueAtDomainMinimum);
+			if(startValue < f0.domainMinimum)	startValue = f0.domainMinimum;
+			[m_criticalInputIntervals addObject:[NSArray arrayWithObjects:[NSNumber numberWithFloat:startValue], [NSNumber numberWithFloat:f0.domainMaximum], nil]];
+			startValue = f0.domainMaximum;
+			f0 = [f0Enumerator nextObject];
 		}
-		else	if(!f1)
+		else
 		{
-			segmentEndPoint = CGPointMake(f0.domainMaximum, f0.floatValueAtDomainMaximum);
-			[m_lineSegmentPFEs addObject:[LineSegmentPartialFloatEndomorphism lineSegmentPFEWithLineSegment2D:[LineSegment2D lineSegment2DWithVertex0:segmentStartPoint vertex1:segmentEndPoint]]];
-			if((f0 = [f1Enumerator nextObject]))	segmentStartPoint = CGPointMake(f0.domainMinimum, f0.floatValueAtDomainMinimum);
-		}
-		else	if(segmentStartPoint.x < f0.domainMinimum)//starting before domain of f0.
-		{
-			//is there domain overlap?
-			if(f1.domainMaximum < f0.domainMinimum)//there is no domain overlap.
+			if(startValue < f0.domainMinimum && startValue < f1.domainMinimum)//need to cross the chasm...
 			{
-				//lay down the rest of f1.  Then ditch 
-				segmentEndPoint = CGPointMake(f1.domainMaximum, f1.floatValueAtDomainMaximum);
-				[m_lineSegmentPFEs addObject:[LineSegmentPartialFloatEndomorphism lineSegmentPFEWithLineSegment2D:[LineSegment2D lineSegment2DWithVertex0:segmentStartPoint vertex1:segmentEndPoint]]];
-				segmentStartPoint = segmentEndPoint;
-				f1 = [f1Enumerator nextObject];
-				noStartPoint = true;
+				startValue = MIN(f0.domainMinimum, f1.domainMinimum);//cross the chasm.
 			}
-			else//there is domain overlap.
+			if(f0.domainMinimum <= startValue && f1.domainMinimum <= startValue)//we begin in a domain intersection
 			{
-				//lay down f1 until the domain overlap.  Then recompute segmentStartPoint.
-				segmentEndPoint = CGPointMake(f0.domainMinimum, [f1 floatValueForFloatInput:f0.domainMinimum]);
-				[m_lineSegmentPFEs addObject:[LineSegmentPartialFloatEndomorphism lineSegmentPFEWithLineSegment2D:[LineSegment2D lineSegment2DWithVertex0:segmentStartPoint vertex1:segmentEndPoint]]];
-				if(f0.floatValueAtDomainMinimum > segmentEndPoint.y || (f0.floatValueAtDomainMinimum == segmentEndPoint.y && [f0 slope] > [f1 slope]))
+				float domainIntersectionMaximum = MIN(f0.domainMaximum, f1.domainMaximum);
+				//either they cross before domainIntersectionMaximum, the domains end at the same time, or one domain ends before the other.
+				const float tolerance = -0.03125f;
+				if(([f1 floatValueForFloatInput:startValue] - [f0 floatValueForFloatInput:startValue]) * ([f1 floatValueForFloatInput:domainIntersectionMaximum] - [f0 floatValueForFloatInput:domainIntersectionMaximum]) < tolerance)
 				{
-					segmentStartPoint = CGPointMake(f0.domainMinimum, f0.floatValueAtDomainMinimum);
+					NSLog(@"%f, %f", [f1 floatValueForFloatInput:startValue] - [f0 floatValueForFloatInput:startValue], [f1 floatValueForFloatInput:domainIntersectionMaximum] - [f0 floatValueForFloatInput:domainIntersectionMaximum]);
+					//the two cross before the domain intersection maximum.
+					//compute the crossing point.
+					float crossingInput = [LineSegmentPartialFloatEndomorphism solutionForSystemWithLineSegmentPFE0:f0 andLineSegmentPFE1:f1];
+					[m_criticalInputIntervals addObject:[NSArray arrayWithObjects:[NSNumber numberWithFloat:startValue], [NSNumber numberWithFloat:crossingInput], nil]];
+					startValue = crossingInput;
 				}
 				else
 				{
-					segmentStartPoint = segmentEndPoint;
+					[m_criticalInputIntervals addObject:[NSArray arrayWithObjects:[NSNumber numberWithFloat:startValue], [NSNumber numberWithFloat:domainIntersectionMaximum], nil]];
+					startValue = domainIntersectionMaximum;
+					if(f0.domainMaximum == domainIntersectionMaximum)	f0 = [f0Enumerator nextObject];
+					if(f1.domainMaximum == domainIntersectionMaximum)	f1 = [f1Enumerator nextObject];
 				}
 			}
-		}
-		else if(segmentStartPoint.x < f1.domainMinimum)//starting before domain of f1.
-		{
-			//is there domain overlap?
-			if(f0.domainMaximum < f1.domainMinimum)//there is no domain overlap.
+			else//we do not begin in a domain intersection, but the current intervals' domains do intersect.
 			{
-				//lay down the rest of f0.  Then ditch
-				segmentEndPoint = CGPointMake(f0.domainMaximum, f0.floatValueAtDomainMaximum);
-				[m_lineSegmentPFEs addObject:[LineSegmentPartialFloatEndomorphism lineSegmentPFEWithLineSegment2D:[LineSegment2D lineSegment2DWithVertex0:segmentStartPoint vertex1:segmentEndPoint]]];
-				segmentStartPoint = segmentEndPoint;
-				f0 = [f0Enumerator nextObject];
-				noStartPoint = true;
-			}
-			else //there is domain overlap.
-			{
-				//lay down f0 until the domain overlap.  Then recompute segmentStartPoint.
-				segmentEndPoint = CGPointMake(f1.domainMinimum, [f0 floatValueForFloatInput:f1.domainMinimum]);
-				[m_lineSegmentPFEs addObject:[LineSegmentPartialFloatEndomorphism lineSegmentPFEWithLineSegment2D:[LineSegment2D lineSegment2DWithVertex0:segmentStartPoint vertex1:segmentEndPoint]]];
-				if(f1.floatValueAtDomainMinimum > segmentEndPoint.y || (f1.floatValueAtDomainMinimum == segmentEndPoint.y && [f1 slope] > [f0 slope]))
-				{
-					segmentStartPoint = CGPointMake(f1.domainMinimum, f1.floatValueAtDomainMinimum);
-				}
-				else
-				{
-					segmentStartPoint = segmentEndPoint;
-				}
-			}
-		}
-		else//starting in a domain overlap.
-		{
-			//which function ends first?
-			if(f0.domainMaximum < f1.domainMaximum)//f0 ends first.
-			{
-				//do both functions contain the start point?
-				if([f0 floatValueForFloatInput:segmentStartPoint.x] > [f1 floatValueForFloatInput:segmentStartPoint.x])//f0 is larger at the start.
-				{
-					//is there crossover between the start point and the end of the domain of f0?
-					if(f0.floatValueAtDomainMaximum >= [f1 floatValueForFloatInput:f0.domainMaximum])//there is no crossover.
-					{
-						//lay down the remainder of f0.  increment f0.  recompute segmentStartPoint
-						segmentEndPoint = CGPointMake(f0.domainMaximum, f0.floatValueAtDomainMaximum);
-						[m_lineSegmentPFEs addObject:[LineSegmentPartialFloatEndomorphism lineSegmentPFEWithLineSegment2D:[LineSegment2D lineSegment2DWithVertex0:segmentStartPoint vertex1:segmentEndPoint]]];
-						if((f0 = [f0Enumerator nextObject]))
-						{
-							if(f0.domainMinimum == segmentEndPoint.x)
-							{
-								if(f0.floatValueAtDomainMinimum > [f1 floatValueForFloatInput:f0.domainMinimum])	segmentStartPoint = CGPointMake(f0.domainMinimum, f0.floatValueAtDomainMinimum);
-								else																				segmentStartPoint = CGPointMake(f0.domainMinimum, [f1 floatValueForFloatInput:f0.domainMinimum]);
-							}
-							else	segmentStartPoint = CGPointMake(segmentEndPoint.x, [f1 floatValueForFloatInput:segmentEndPoint.x]);
-						}
-						else	segmentStartPoint = CGPointMake(segmentEndPoint.x, [f1 floatValueForFloatInput:segmentEndPoint.x]);
-					}
-					else	//there is crossover.
-					{
-						//compute the crossing point.  Lay down f0 until the crossing point.  Set segmentStartPoint = segmentEndPoint.
-						segmentEndPoint = [LineSegmentPartialFloatEndomorphism pointOfIntersectionBetweenLineSegmentPFE0:f0 andLineSegmentPFE1:f1];
-						[m_lineSegmentPFEs addObject:[LineSegmentPartialFloatEndomorphism lineSegmentPFEWithLineSegment2D:[LineSegment2D lineSegment2DWithVertex0:segmentStartPoint vertex1:segmentEndPoint]]];
-						segmentStartPoint = segmentEndPoint;
-					}
-				}
-				else if([f0 floatValueForFloatInput:segmentStartPoint.x] == [f1 floatValueForFloatInput:segmentStartPoint.x])//f0 = f1 at the start.
-				{
-					//are their slopes equal?
-					if([f1 slope] > [f0 slope])//f1 has larger slope.
-					{
-						//Lay down f1 until the end of the domain of f0.  Increment f0 and recompute the startPoint.
-						segmentEndPoint = CGPointMake(f0.domainMaximum, [f1 floatValueForFloatInput:f0.domainMaximum]);
-						[m_lineSegmentPFEs addObject:[LineSegmentPartialFloatEndomorphism lineSegmentPFEWithLineSegment2D:[LineSegment2D lineSegment2DWithVertex0:segmentStartPoint vertex1:segmentEndPoint]]];
-						if((f0 = [f0Enumerator nextObject]))
-						{
-							if(f0.domainMinimum == segmentEndPoint.x)
-							{
-								if(f0.floatValueAtDomainMinimum > [f1 floatValueForFloatInput:f0.domainMinimum])	segmentStartPoint = CGPointMake(f0.domainMinimum, f0.floatValueAtDomainMinimum);
-								else																				segmentStartPoint = CGPointMake(f0.domainMinimum, [f1 floatValueForFloatInput:f0.domainMinimum]);
-							}
-							else	segmentStartPoint = CGPointMake(segmentEndPoint.x, [f1 floatValueForFloatInput:segmentEndPoint.x]);
-						}
-						else	segmentStartPoint = CGPointMake(segmentEndPoint.x, [f1 floatValueForFloatInput:segmentEndPoint.x]);
-					}
-					else//they have the same slope or f0 has larger slope.
-					{
-						//lay down the remainder of f0.  increment f0.  recompute segmentStartPoint.
-						segmentEndPoint = CGPointMake(f0.domainMaximum, f0.floatValueAtDomainMaximum);
-						[m_lineSegmentPFEs addObject:[LineSegmentPartialFloatEndomorphism lineSegmentPFEWithLineSegment2D:[LineSegment2D lineSegment2DWithVertex0:segmentStartPoint vertex1:segmentEndPoint]]];
-						if((f0 = [f0Enumerator nextObject]))
-						{
-							if(f0.domainMinimum == segmentEndPoint.x)
-							{
-								if(f0.floatValueAtDomainMinimum > [f1 floatValueForFloatInput:f0.domainMinimum])	segmentStartPoint = CGPointMake(f0.domainMinimum, f0.floatValueAtDomainMinimum);
-								else																				segmentStartPoint = CGPointMake(f0.domainMinimum, [f1 floatValueForFloatInput:f0.domainMinimum]);
-							}
-							else	segmentStartPoint = CGPointMake(segmentEndPoint.x, [f1 floatValueForFloatInput:segmentEndPoint.x]);
-						}
-						else	segmentStartPoint = CGPointMake(segmentEndPoint.x, [f1 floatValueForFloatInput:segmentEndPoint.x]);
-					}
-				}
-				else//f1 is larger at the start.
-				{
-					//is there crossover between the start point and the end of the domain of f0?
-					if([f1 floatValueForFloatInput:f0.domainMaximum] >= f0.floatValueAtDomainMaximum)//there is no crossover.
-					{
-						//lay down f1 until the end of the domain of f0.  Increment f0.  Recompute segmentStartPoint
-						segmentEndPoint = CGPointMake(f0.domainMaximum, [f1 floatValueForFloatInput:f0.domainMaximum]);
-						[m_lineSegmentPFEs addObject:[LineSegmentPartialFloatEndomorphism lineSegmentPFEWithLineSegment2D:[LineSegment2D lineSegment2DWithVertex0:segmentStartPoint vertex1:segmentEndPoint]]];
-						if((f0 = [f0Enumerator nextObject]))
-						{
-							if(f0.domainMinimum == segmentEndPoint.x)
-							{
-								if(f0.floatValueAtDomainMinimum > [f1 floatValueForFloatInput:f0.domainMinimum])	segmentStartPoint = CGPointMake(f0.domainMinimum, f0.floatValueAtDomainMinimum);
-								else																				segmentStartPoint = CGPointMake(f0.domainMinimum, [f1 floatValueForFloatInput:f0.domainMinimum]);
-							}
-							else	segmentStartPoint = CGPointMake(segmentEndPoint.x, [f1 floatValueForFloatInput:segmentEndPoint.x]);
-						}
-						else	segmentStartPoint = CGPointMake(segmentEndPoint.x, [f1 floatValueForFloatInput:segmentEndPoint.x]);
-					}
-					else	//there is crossover.
-					{
-						//compute the crossing point.  Lay down f1 until the crossing point.  Set segmentStartPoint = segmentEndPoint.
-						segmentEndPoint = [LineSegmentPartialFloatEndomorphism pointOfIntersectionBetweenLineSegmentPFE0:f0 andLineSegmentPFE1:f1];
-						[m_lineSegmentPFEs addObject:[LineSegmentPartialFloatEndomorphism lineSegmentPFEWithLineSegment2D:[LineSegment2D lineSegment2DWithVertex0:segmentStartPoint vertex1:segmentEndPoint]]];
-						segmentStartPoint = segmentEndPoint;
-					}
-				}
-			}
-			else//f1 ends first
-			{
-				//do both functions contain the start point?
-				if([f1 floatValueForFloatInput:segmentStartPoint.x] > [f0 floatValueForFloatInput:segmentStartPoint.x])//f1 is larger at the start.
-				{
-					//is there crossover between the start point and the end of the domain of f1?
-					if(f1.floatValueAtDomainMaximum >= [f0 floatValueForFloatInput:f1.domainMaximum])//there is no crossover.
-					{
-						//lay down the remainder of f1.  increment f1.  recompute segmentStartPoint
-						segmentEndPoint = CGPointMake(f1.domainMaximum, f1.floatValueAtDomainMaximum);
-						[m_lineSegmentPFEs addObject:[LineSegmentPartialFloatEndomorphism lineSegmentPFEWithLineSegment2D:[LineSegment2D lineSegment2DWithVertex0:segmentStartPoint vertex1:segmentEndPoint]]];
-						if((f1 = [f1Enumerator nextObject]))
-						{
-							if(f1.domainMinimum == segmentEndPoint.x)
-							{
-								if(f1.floatValueAtDomainMinimum > [f0 floatValueForFloatInput:f1.domainMinimum])	segmentStartPoint = CGPointMake(f1.domainMinimum, f1.floatValueAtDomainMinimum);
-								else																				segmentStartPoint = CGPointMake(f1.domainMinimum, [f0 floatValueForFloatInput:f1.domainMinimum]);
-							}
-							else	segmentStartPoint = CGPointMake(segmentEndPoint.x, [f0 floatValueForFloatInput:segmentEndPoint.x]);
-						}
-						else	segmentStartPoint = CGPointMake(segmentEndPoint.x, [f0 floatValueForFloatInput:segmentEndPoint.x]);
-					}
-					else	//there is crossover.
-					{
-						//compute the crossing point.  Lay down f1 until the crossing point.  Set segmentStartPoint = segmentEndPoint.
-						segmentEndPoint = [LineSegmentPartialFloatEndomorphism pointOfIntersectionBetweenLineSegmentPFE0:f1 andLineSegmentPFE1:f0];
-						[m_lineSegmentPFEs addObject:[LineSegmentPartialFloatEndomorphism lineSegmentPFEWithLineSegment2D:[LineSegment2D lineSegment2DWithVertex0:segmentStartPoint vertex1:segmentEndPoint]]];
-						segmentStartPoint = segmentEndPoint;
-					}
-				}
-				else if([f1 floatValueForFloatInput:segmentStartPoint.x] == [f0 floatValueForFloatInput:segmentStartPoint.x])//f1 = f0 at the start.
-				{
-					//are their slopes equal?
-					if([f0 slope] > [f1 slope])//f0 has larger slope.
-					{
-						//Lay down f0 until the end of the domain of f1.  Increment f1 and recompute the startPoint.
-						segmentEndPoint = CGPointMake(f1.domainMaximum, [f0 floatValueForFloatInput:f1.domainMaximum]);
-						[m_lineSegmentPFEs addObject:[LineSegmentPartialFloatEndomorphism lineSegmentPFEWithLineSegment2D:[LineSegment2D lineSegment2DWithVertex0:segmentStartPoint vertex1:segmentEndPoint]]];
-						if((f1 = [f1Enumerator nextObject]))
-						{
-							if(f1.domainMinimum == segmentEndPoint.x)
-							{
-								if(f1.floatValueAtDomainMinimum > [f0 floatValueForFloatInput:f1.domainMinimum])	segmentStartPoint = CGPointMake(f1.domainMinimum, f1.floatValueAtDomainMinimum);
-								else																				segmentStartPoint = CGPointMake(f1.domainMinimum, [f0 floatValueForFloatInput:f1.domainMinimum]);
-							}
-							else	segmentStartPoint = CGPointMake(segmentEndPoint.x, [f0 floatValueForFloatInput:segmentEndPoint.x]);
-						}
-						else	segmentStartPoint = CGPointMake(segmentEndPoint.x, [f0 floatValueForFloatInput:segmentEndPoint.x]);
-					}
-					else//they have the same slope or f1 has larger slope.
-					{
-						//lay down the remainder of f1.  increment f1.  recompute segmentStartPoint.
-						segmentEndPoint = CGPointMake(f1.domainMaximum, f1.floatValueAtDomainMaximum);
-						[m_lineSegmentPFEs addObject:[LineSegmentPartialFloatEndomorphism lineSegmentPFEWithLineSegment2D:[LineSegment2D lineSegment2DWithVertex0:segmentStartPoint vertex1:segmentEndPoint]]];
-						if((f1 = [f1Enumerator nextObject]))
-						{
-							if(f1.domainMinimum == segmentEndPoint.x)
-							{
-								if(f1.floatValueAtDomainMinimum > [f0 floatValueForFloatInput:f1.domainMinimum])	segmentStartPoint = CGPointMake(f1.domainMinimum, f1.floatValueAtDomainMinimum);
-								else																				segmentStartPoint = CGPointMake(f1.domainMinimum, [f0 floatValueForFloatInput:f1.domainMinimum]);
-							}
-							else	segmentStartPoint = CGPointMake(segmentEndPoint.x, [f0 floatValueForFloatInput:segmentEndPoint.x]);
-						}
-						else	segmentStartPoint = CGPointMake(segmentEndPoint.x, [f0 floatValueForFloatInput:segmentEndPoint.x]);
-					}
-				}
-				else//f0 is larger at the start.
-				{
-					//is there crossover between the start point and the end of the domain of f1?
-					if([f0 floatValueForFloatInput:f1.domainMaximum] >= f1.floatValueAtDomainMaximum)//there is no crossover.
-					{
-						//lay down f0 until the end of the domain of f1.  Increment f1.  Recompute segmentStartPoint
-						segmentEndPoint = CGPointMake(f1.domainMaximum, [f0 floatValueForFloatInput:f1.domainMaximum]);
-						[m_lineSegmentPFEs addObject:[LineSegmentPartialFloatEndomorphism lineSegmentPFEWithLineSegment2D:[LineSegment2D lineSegment2DWithVertex0:segmentStartPoint vertex1:segmentEndPoint]]];
-						if((f1 = [f1Enumerator nextObject]))
-						{
-							if(f1.domainMinimum == segmentEndPoint.x)
-							{
-								if(f1.floatValueAtDomainMinimum > [f0 floatValueForFloatInput:f1.domainMinimum])	segmentStartPoint = CGPointMake(f1.domainMinimum, f1.floatValueAtDomainMinimum);
-								else																				segmentStartPoint = CGPointMake(f1.domainMinimum, [f0 floatValueForFloatInput:f1.domainMinimum]);
-							}
-							else	segmentStartPoint = CGPointMake(segmentEndPoint.x, [f0 floatValueForFloatInput:segmentEndPoint.x]);
-						}
-						else	segmentStartPoint = CGPointMake(segmentEndPoint.x, [f0 floatValueForFloatInput:segmentEndPoint.x]);
-					}
-					else	//there is crossover.
-					{
-						//compute the crossing point.  Lay down f0 until the crossing point.  Set segmentStartPoint = segmentEndPoint.
-						segmentEndPoint = [LineSegmentPartialFloatEndomorphism pointOfIntersectionBetweenLineSegmentPFE0:f1 andLineSegmentPFE1:f0];
-						[m_lineSegmentPFEs addObject:[LineSegmentPartialFloatEndomorphism lineSegmentPFEWithLineSegment2D:[LineSegment2D lineSegment2DWithVertex0:segmentStartPoint vertex1:segmentEndPoint]]];
-						segmentStartPoint = segmentEndPoint;
-					}
-				}
+				float domainIntersectionMinimum = MAX(f0.domainMinimum, f1.domainMinimum);
+				[m_criticalInputIntervals addObject:[NSArray arrayWithObjects:[NSNumber numberWithFloat:startValue], [NSNumber numberWithFloat:domainIntersectionMinimum], nil]];
+				startValue = domainIntersectionMinimum;
 			}
 		}
 	}
-	return [PiecewiseLinearPartialFloatEndomorphism piecewiseLinearPFEWithLineSegmentPFEs:[NSArray arrayWithArray:m_lineSegmentPFEs] maximizing:true];
+	
+	NSMutableArray* m_lineSegmentPFEs = [NSMutableArray array];
+	f0Enumerator = [piecewiseLinearPFE0.disjointLineSegmentPFEsWithDomainsInAscendingOrder objectEnumerator];
+	f1Enumerator = [piecewiseLinearPFE1.disjointLineSegmentPFEsWithDomainsInAscendingOrder objectEnumerator];
+	f0 = [f0Enumerator nextObject];
+	f1 = [f1Enumerator nextObject];
+	for(NSArray* criticalInputInterval in m_criticalInputIntervals)
+	{
+		float x0 = [(NSNumber*)[criticalInputInterval objectAtIndex:0] floatValue];
+		float x1 = [(NSNumber*)[criticalInputInterval objectAtIndex:1] floatValue];
+		//increment f0 and f1.
+		while(f0 && f0.domainMaximum <= x0)	f0 = [f0Enumerator nextObject];
+		while(f1 && f1.domainMaximum <= x0)	f1 = [f1Enumerator nextObject];
+		if(f0 && f0.domainMinimum <= x0)
+		{
+			if(f1 && f1.domainMinimum <= x0)
+			{
+				if([f0 floatValueForFloatInput:x0] > [f1 floatValueForFloatInput:x0] || [f0 floatValueForFloatInput:x1] > [f1 floatValueForFloatInput:x1])	//f0 is larger.  Use it instead of f1 for this segment.
+				{
+					[m_lineSegmentPFEs addObject:[LineSegmentPartialFloatEndomorphism lineSegmentPFEWithLineSegment2D:[LineSegment2D lineSegment2DWithVertex0:CGPointMake(x0, [f0 floatValueForFloatInput:x0]) vertex1:CGPointMake(x1, [f0 floatValueForFloatInput:x1])]]];
+				}
+				else	//f1 is larger.  Use it instead of f0 for this segment.
+				{
+					[m_lineSegmentPFEs addObject:[LineSegmentPartialFloatEndomorphism lineSegmentPFEWithLineSegment2D:[LineSegment2D lineSegment2DWithVertex0:CGPointMake(x0, [f1 floatValueForFloatInput:x0]) vertex1:CGPointMake(x1, [f1 floatValueForFloatInput:x1])]]];
+				}
+			}
+			else
+			{
+				[m_lineSegmentPFEs addObject:[LineSegmentPartialFloatEndomorphism lineSegmentPFEWithLineSegment2D:[LineSegment2D lineSegment2DWithVertex0:CGPointMake(x0, [f0 floatValueForFloatInput:x0]) vertex1:CGPointMake(x1, [f0 floatValueForFloatInput:x1])]]];
+			}
+		}
+		else	if(f1 && f1.domainMinimum <= [(NSNumber*)[criticalInputInterval objectAtIndex:0] floatValue])
+		{
+			[m_lineSegmentPFEs addObject:[LineSegmentPartialFloatEndomorphism lineSegmentPFEWithLineSegment2D:[LineSegment2D lineSegment2DWithVertex0:CGPointMake(x0, [f1 floatValueForFloatInput:x0]) vertex1:CGPointMake(x1, [f1 floatValueForFloatInput:x1])]]];
+		}
+		else
+		{
+			NSLog(@"INTERNAL LOGIC ERROR: exhausted f0 and f1 before we should have...");
+		}
+	}
+	if(f0)	NSLog(@"INTERNAL LOGIC ERROR: f0 not exhausted!");
+	if(f1)	NSLog(@"INTERNAL LOGIC ERROR: f1 not exhausted!");
+ 	NSLog(@"exiting maxUnion");
+	return [PiecewiseLinearPartialFloatEndomorphism piecewiseLinearPFEWithLineSegmentPFEs:[NSArray arrayWithArray:m_lineSegmentPFEs] maximizing:false];
 }
 
 +(PiecewiseLinearPartialFloatEndomorphism*)differenceOnIntersectionPiecewiseLinearPFEWithPiecewiseLinearPFE0:(PiecewiseLinearPartialFloatEndomorphism*)piecewiseLinearPFE0 piecewiseLinearPFE1:(PiecewiseLinearPartialFloatEndomorphism*)piecewiseLinearPFE1
@@ -1035,6 +710,8 @@ float planarCrossProd(CGPoint v0, CGPoint v1){return v0.x * v1.y - v1.x * v0.y;}
 @synthesize vertex2 = _vertex2;
 @synthesize piecewiseLinearPartialFloatMinMaxEndomorphismPair = _piecewiseLinearPartialFloatMinMaxEndomorphismPair;
 
++(PolygonTetrisCEGTriangle*)polygonTetrisCEGTriangleWithVertex0:(CGPoint)vertex0 vertex1:(CGPoint)vertex1 vertex2:(CGPoint)vertex2{return [[PolygonTetrisCEGTriangle alloc] initWithVertex0:vertex0 vertex1:vertex1 vertex2:vertex2];}
+
 -(id)initWithVertex0:(CGPoint)vertex0 vertex1:(CGPoint)vertex1 vertex2:(CGPoint)vertex2
 {
 	//check for degenerate triangle?
@@ -1188,6 +865,18 @@ float planarCrossProd(CGPoint v0, CGPoint v1){return v0.x * v1.y - v1.x * v0.y;}
 @synthesize floorHeight = _floorHeight;
 @synthesize polygonTetrisCEGObject = _polygonTetrisCEGObject;
 
++(PolygonTetrisSystem*)polygonTetrisSystemWithFloorHeight:(float)floorHeight{return [[PolygonTetrisSystem alloc] initWithFloorHeight:floorHeight];}
+
+-(id)initWithFloorHeight:(float)floorHeight
+{
+	if(self = [super init])
+	{
+		self.floorHeight = floorHeight;
+		self.polygonTetrisCEGObject = nil;
+	}
+	return self;
+}
+
 -(id)initWithFloorHeight:(float)floorHeight polygonTetrisCEGObject:(id<PolygonTetrisCEGObject>)polygonTetrisCEGObject//drop an object onto the floor
 {
 	if(self = [super init])
@@ -1203,17 +892,46 @@ float planarCrossProd(CGPoint v0, CGPoint v1){return v0.x * v1.y - v1.x * v0.y;}
 -(void)addPolygonTetrisCEGObject:(id<PolygonTetrisCEGObject>)polygonTetrisCEGObject//drop an object into the system, unioning the result with self.polygonTetrisCEGObject and setting the union as the value of self.polygonTetrisCEGObject.
 {
 	float minHeight = [polygonTetrisCEGObject.piecewiseLinearPartialFloatMinMaxEndomorphismPair.minPFE minimumValue];
-	PiecewiseLinearPartialFloatEndomorphism* diff =
-	[PiecewiseLinearPartialFloatEndomorphism
-		differenceOnIntersectionPiecewiseLinearPFEWithPiecewiseLinearPFE0:
-			self.polygonTetrisCEGObject.piecewiseLinearPartialFloatMinMaxEndomorphismPair.maxPFE
-		piecewiseLinearPFE1:
-			polygonTetrisCEGObject.piecewiseLinearPartialFloatMinMaxEndomorphismPair.minPFE
-	];
-	float minDistance = [diff minimumValue];
-	NSLog(@"minDistance: %f", minDistance);
-	[polygonTetrisCEGObject moveUpByFloat:MAX(self.floorHeight - minHeight, -minDistance)];
-	self.polygonTetrisCEGObject = [PolygonTetrisCEGUnion polygonTetrisCEGUnionWithObjects:[NSArray arrayWithObjects:self.polygonTetrisCEGObject, polygonTetrisCEGObject, nil]];
+	if(self.polygonTetrisCEGObject)
+	{
+		PiecewiseLinearPartialFloatEndomorphism* diff =
+		[PiecewiseLinearPartialFloatEndomorphism
+			differenceOnIntersectionPiecewiseLinearPFEWithPiecewiseLinearPFE0:
+				self.polygonTetrisCEGObject.piecewiseLinearPartialFloatMinMaxEndomorphismPair.maxPFE
+			piecewiseLinearPFE1:
+				polygonTetrisCEGObject.piecewiseLinearPartialFloatMinMaxEndomorphismPair.minPFE
+		];
+		float minDistance = [diff minimumValue];
+		NSLog(@"minDistance: %f", minDistance);
+		[polygonTetrisCEGObject moveUpByFloat:MAX(self.floorHeight - minHeight, -minDistance)];
+		self.polygonTetrisCEGObject = [PolygonTetrisCEGUnion polygonTetrisCEGUnionWithObjects:[NSArray arrayWithObjects:self.polygonTetrisCEGObject, polygonTetrisCEGObject, nil]];
+	}
+	else
+	{
+		[polygonTetrisCEGObject moveUpByFloat:self.floorHeight - minHeight];
+		self.polygonTetrisCEGObject = polygonTetrisCEGObject;
+	}
+}
+
+@end
+
+@interface PolygonTetrisPacking()
+
+@property	(nonatomic, readwrite, strong)	NSArray*	objectsInOptimalOrder;
+
+@end
+
+@implementation PolygonTetrisPacking
+
+@synthesize objectsInOptimalOrder = _objectsInOptimalOrder;
+
+-(id)initWithObjects:(NSArray*)objects
+{
+	
+	if(self = [super init])
+	{
+	}
+	return self;
 }
 
 @end
