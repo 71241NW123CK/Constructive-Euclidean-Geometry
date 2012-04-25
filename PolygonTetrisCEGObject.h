@@ -48,8 +48,12 @@
 @property	(nonatomic, readonly, strong)	LineSegment2D*	lineSegment2D;
 
 +(LineSegmentPartialFloatEndomorphism*)lineSegmentPFEWithLineSegment2D:(LineSegment2D*)lineSegment2D;
++(LineSegmentPartialFloatEndomorphism*)lineSegmentPFEBySplicingLineSegmentPFE0:(LineSegmentPartialFloatEndomorphism*)lineSegmentPFE0 togetherWithLineSegmentPFE1:(LineSegmentPartialFloatEndomorphism*)lineSegmentPFE1;
++(NSArray*)arrayBySewingCoincidentLineSegmentPFEs:(NSArray*)lineSegmentPFEs;
 
 -(id)initWithLineSegment2D:(LineSegment2D*)lineSegment2D;
+-(id)initBySplicingLineSegmentPFE0:(LineSegmentPartialFloatEndomorphism*)lineSegmentPFE0 togetherWithLineSegmentPFE1:(LineSegmentPartialFloatEndomorphism*)lineSegmentPFE1;
+-(bool)isCoincidentToTheLeftOf:(LineSegmentPartialFloatEndomorphism*)lineSegmentPFE;
 
 @end
 

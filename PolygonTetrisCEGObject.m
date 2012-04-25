@@ -78,6 +78,8 @@
 
 +(LineSegmentPartialFloatEndomorphism*)lineSegmentPFEWithLineSegment2D:(LineSegment2D*)lineSegment2D{return [[LineSegmentPartialFloatEndomorphism alloc] initWithLineSegment2D:lineSegment2D];}
 
++(LineSegmentPartialFloatEndomorphism*)lineSegmentPFEBySplicingLineSegmentPFE0:(LineSegmentPartialFloatEndomorphism*)lineSegmentPFE0 togetherWithLineSegmentPFE1:(LineSegmentPartialFloatEndomorphism*)lineSegmentPFE1{return [[LineSegmentPartialFloatEndomorphism alloc] initBySplicingLineSegmentPFE0:lineSegmentPFE0 togetherWithLineSegmentPFE1:lineSegmentPFE1];}
+
 +(CGPoint)pointOfIntersectionBetweenLineSegmentPFE0:(LineSegmentPartialFloatEndomorphism*)lineSegmentPFE0 andLineSegmentPFE1:(LineSegmentPartialFloatEndomorphism*)lineSegmentPFE1
 {
 	float domainOverlapMinimum = MAX(lineSegmentPFE0.domainMinimum, lineSegmentPFE1.domainMinimum);
@@ -129,6 +131,28 @@
 	return intersectionX;
 }
 
++(NSArray*)arrayBySewingCoincidentLineSegmentPFEs:(NSArray*)lineSegmentPFEs
+{
+	//fuckit I'm using recursion.
+	//in Haskell, assuming coincident :: LineSegmentPFE -> LineSegmentPFE -> Bool, splice :: LineSegmentPFE -> LineSegmentPFE -> LineSegmentPFE, this is simply:
+	//f [] = []
+	//f [x] = x
+	//f (x0 : x1 : xs) = if coincident x0 x1 then f ((splice x0 x1) : xs) else x0 : f (x1 : xs)
+	if([lineSegmentPFEs count] == 0)	return [NSArray array];
+	if([lineSegmentPFEs count] == 1)	return lineSegmentPFEs;
+	LineSegmentPartialFloatEndomorphism* x0 = [lineSegmentPFEs objectAtIndex:0];
+	LineSegmentPartialFloatEndomorphism* x1 = [lineSegmentPFEs objectAtIndex:1];
+	if([x0 isCoincidentToTheLeftOf:x1])
+	{
+		NSMutableArray* m_arg = [NSMutableArray arrayWithArray:[lineSegmentPFEs subarrayWithRange:NSMakeRange(2, [lineSegmentPFEs count] - 2)]];
+		[m_arg insertObject:[LineSegmentPartialFloatEndomorphism lineSegmentPFEBySplicingLineSegmentPFE0:x0 togetherWithLineSegmentPFE1:x1] atIndex:0];
+		return [LineSegmentPartialFloatEndomorphism arrayBySewingCoincidentLineSegmentPFEs:[NSArray arrayWithArray:m_arg]];
+	}
+	NSMutableArray* m_result = [NSMutableArray arrayWithArray:[LineSegmentPartialFloatEndomorphism arrayBySewingCoincidentLineSegmentPFEs:[lineSegmentPFEs subarrayWithRange:NSMakeRange(1, [lineSegmentPFEs count] - 1)]]];
+	[m_result insertObject:x0 atIndex:0];
+	return [NSArray arrayWithArray:m_result];
+}
+
 -(float)slope{return [self.lineSegment2D slope];}
 
 -(id)initWithLineSegment2D:(LineSegment2D*)lineSegment2D
@@ -154,6 +178,36 @@
 		}
 	}
 	return self;
+}
+
+-(id)initBySplicingLineSegmentPFE0:(LineSegmentPartialFloatEndomorphism*)lineSegmentPFE0 togetherWithLineSegmentPFE1:(LineSegmentPartialFloatEndomorphism*)lineSegmentPFE1
+{
+	LineSegment2D* lineSegment2D =
+	[LineSegment2D
+		lineSegment2DWithVertex0:
+			CGPointMake(lineSegmentPFE0.domainMinimum, lineSegmentPFE0.floatValueAtDomainMinimum)
+		vertex1:
+			CGPointMake(lineSegmentPFE1.domainMaximum, lineSegmentPFE1.floatValueAtDomainMaximum)
+	];
+	if(self = [super init])
+	{
+		self.lineSegment2D = lineSegment2D;
+		self.domainMinimum = lineSegmentPFE0.domainMinimum;
+		self.floatValueAtDomainMinimum = lineSegmentPFE0.floatValueAtDomainMinimum;
+		self.domainMaximum = lineSegmentPFE1.domainMaximum;
+		self.floatValueAtDomainMaximum = lineSegmentPFE1.floatValueAtDomainMaximum;
+	}
+	return self;
+}
+
+-(bool)isCoincidentToTheLeftOf:(LineSegmentPartialFloatEndomorphism*)lineSegmentPFE
+{
+	return
+	self.domainMaximum == lineSegmentPFE.domainMinimum
+	&&
+	self.floatValueAtDomainMaximum == lineSegmentPFE.floatValueAtDomainMinimum
+	&&
+	(self.domainMaximum - self.domainMinimum) * (lineSegmentPFE.floatValueAtDomainMaximum - lineSegmentPFE.floatValueAtDomainMinimum) == (lineSegmentPFE.domainMaximum - lineSegmentPFE.domainMinimum) * (self.floatValueAtDomainMaximum - self.floatValueAtDomainMinimum);
 }
 
 -(float)floatValueForFloatInput:(float)input{return (self.domainMinimum <= input && input <= self.domainMaximum) ? self.floatValueAtDomainMinimum + (input - self.domainMinimum) * (self.floatValueAtDomainMaximum - self.floatValueAtDomainMinimum) / (self.domainMaximum - self.domainMinimum) : nanf("");}
@@ -513,7 +567,6 @@
 		comparisonSelector:
 			@selector(compare:)
 	];
-	//sew together coincident segments... later... and with a more precise comparison of slope...
 	NSArray* nontrivialDisjointLineSegmentPFEsWithDomainsInAscendingOrder =
 	filter
 	(
@@ -523,9 +576,10 @@
 		},
 		disjointLineSegmentPFEsWithDomainsInAscendingOrder
 	);
+	NSArray* coincidentLineSegmentsSewnTogether = [LineSegmentPartialFloatEndomorphism arrayBySewingCoincidentLineSegmentPFEs:nontrivialDisjointLineSegmentPFEsWithDomainsInAscendingOrder];
 	if(self = [super init])
 	{
-		self.disjointLineSegmentPFEsWithDomainsInAscendingOrder = nontrivialDisjointLineSegmentPFEsWithDomainsInAscendingOrder;
+		self.disjointLineSegmentPFEsWithDomainsInAscendingOrder = coincidentLineSegmentsSewnTogether;
 		self.maximizing = maximizing;
 	}
 	return self;
